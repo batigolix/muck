@@ -4,14 +4,19 @@
  * Create an editor role for testing.
  */
 function muck_create_roles() {
+  $role = user_role_load_by_name('muckadmin');
+  if (isset($role->rid)) {
+    drupal_set_message('Muckadmin role already exists on this site');
+  }
+  else {
 
-  // Create a default role for site administrators, with all available
-  // permissions assigned.
-  $role = new stdClass();
-  $role->name = 'muckadmin';
-  $role->weight = 2;
-  user_role_save($role);
-  user_role_grant_permissions($role->rid, array_keys(module_invoke_all('permission')));
-
+    // Create a default role for site administrators, with all available
+    // permissions assigned.
+    $role = new stdClass();
+    $role->name = 'muckadmin';
+    $role->weight = 2;
+    user_role_save($role);
+    user_role_grant_permissions($role->rid, array_keys(module_invoke_all('permission')));
+  }
 }
 
