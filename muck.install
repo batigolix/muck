@@ -1,0 +1,39 @@
+<?php
+
+/**
+ * @file
+ * This file contains the sites install functions.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function muck_install() {
+  $t = get_t();
+
+  muck_create_roles();
+
+  // Runs all the update hooks.
+  for ($i = 7000; $i < 8000; $i++) {
+    $candidate = 'muck_update_' . $i;
+    if (function_exists($candidate)) {
+      $candidate();
+    }
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function muck_uninstall() {
+  $t = get_t();
+}
+
+/**
+ * Run update
+ */
+function muck_update_7000() {
+
+muck_create_roles();
+
+}

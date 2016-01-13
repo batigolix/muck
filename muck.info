@@ -1,0 +1,4 @@
+name = Muck
+description = Drupal development stuff
+core = 7.x
+package = Development
