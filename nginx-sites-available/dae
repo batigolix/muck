@@ -1,0 +1,30 @@
+server {
+ 
+	#Change the line below to match your site's folder
+	root /usr/share/nginx/html/digital-agenda-dev/platform;
+	index index.php index.html index.htm;
+ 
+	# Make site accessible from http://dae/
+	# Don't forget to add it to /etc/hosts file, eg:
+	#127.0.0.1       dae
+ 
+	server_name dae.dev.europa.eu;
+ 
+	location / {
+		try_files $uri $uri/ @rewrite;
+	}
+ 
+	location @rewrite{
+		rewrite ^(.*)$  /index.php?q=$1;
+	}
+	
+	# pass the PHP scripts to FastCGI server listening on the php-fpm socket
+	location ~ \.php$ {
+		try_files $uri =404;
+		fastcgi_pass unix:/var/run/php5-fpm.sock;
+		fastcgi_index index.php;
+		fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+		include fastcgi_params;
+	}
+ 
+}
