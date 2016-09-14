@@ -20,3 +20,228 @@ function muck_create_roles() {
   }
 }
 
+/**
+ * Implements hook_filter_info()
+ */
+function muck_filter_info() {
+//  $filters['twitter_username'] = array(
+//    'title' => t('Twitter @username converter'),
+//    'description' => t('Converts Twitter-style @usernames into links to Twitter account pages.'),
+//    'process callback' => '_twitter_filter_username',
+//    'tips callback' => '_twitter_filter_tip_username',
+//  );
+//  $filters['twitter_hashtag'] = array(
+//    'title' => t('Twitter #hashtag converter'),
+//    'description' => t('Converts Twitter-style #hashtags into links to twitter.com. Note: this converts all text prefixed by a "#" symbol into a hashtag link, so it can cause problems with other text.'),
+//    'process callback' => '_twitter_filter_hashtag',
+//    'tips callback' => '_twitter_filter_tip_hashtag',
+//  );
+//  $filters['twitter_links'] = array(
+//    'title' => t('Twitter link converter'),
+//    'description' => t('Makes links in Twitter messages to be opened in new windows and adds rel="nofollow" so these links do not penalize SEO.'),
+//    'process callback' => '_twitter_filter_link',
+//    'tips callback' => '_twitter_filter_tip_link',
+//  );
+  $filters['twitter_embed'] = array(
+    'title' => t('Embed Tweets'),
+    'description' => t('Converts URLs for Twitter status updates into embedded Tweets. Should be sorted after the "Limit allowed HTML tags" filter, if used.'),
+    'process callback' => '_muck_filter_embed_tweet',
+    'tips callback' => '_muck_filter_tip_embed_tweet',
+  );
+
+  return $filters;
+}
+
+/**
+ * Provides filter tips for Embedded Tweets.
+ *
+ * @return string
+ *   Tip about usage of filter.
+ */
+function _muck_filter_tip_embed_tweet($filter, $format, $long = FALSE) {
+  return t('Links to Twitter status updates are converted to Embedded Tweets.');
+}
+
+/**
+ * Processes the text.
+ *
+ * This code is lifted out of the twitter module. See
+ * https://www.drupal.org/project/twitter.
+ *
+ * @return string
+ *   Processed text.
+ */
+function _muck_filter_embed_tweet($text, $filter) {
+  // module_load_include('inc', 'twitter');
+
+  // Tags to skip and not recurse into.
+  $ignore_tags = 'a|script|style|code|pre';
+
+  // Split at all tags; ensures that no tags or attributes are processed.
+  $chunks = preg_split('/(<.+?>)/is', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+  // PHP ensures that the array consists of alternating delimiters and
+  // literals, and begins and ends with a literal (inserting NULL as required).
+  // Therefore, the first chunk is always text:
+  $chunk_type = 'text';
+
+  // If a tag of $ignore_tags is found, it is stored in $open_tag and only
+  // removed when the closing tag is found. Until the closing tag is found, no
+  // replacements are made.
+  $open_tag = '';
+
+  // Loop through all of the text chunks.
+  foreach ($chunks as $i => $chunk) {
+    if ($chunk_type == 'text') {
+
+      // Only process this text if there are no unclosed $ignore_tags.
+      if ($open_tag == '') {
+
+        // Check for links to Tweets to replace with embed code.
+        $tweets = array();
+
+        preg_match_all('/https?:\/\/(www\.)?twitter.com\/.+?\/status(es)?\/(.*)/i', $chunks[$i], $tweets, PREG_SET_ORDER);
+        foreach ($tweets as $tweet) {
+          $url = $tweet[0];
+          $id = $tweet[3];
+          $embed = _twitter_statuses($url, $id);
+          $chunks[$i] = str_replace($url, $embed, $chunks[$i]);
+        }
+      }
+
+      $tweets = array();
+      preg_match_all('/https?:\/\/(www\.)?twitter.com\/(.*)/i', $chunks[$i], $tweets, PREG_SET_ORDER);
+      foreach ($tweets as $tweet) {
+        $url = $tweet[0];
+        $user = $tweet[2];
+        $embed = _twitter_user_timeline($url, $user);
+        $chunks[$i] = str_replace($url, $embed, $chunks[$i]);
+      }
+
+      // Text chunk is done, so next chunk must be a tag.
+      $chunk_type = 'tag';
+    }
+    else {
+
+      // Only process this tag if there are no unclosed $ignore_tags.
+      if ($open_tag == '') {
+        // Check whether this tag is contained in $ignore_tags.
+        if (preg_match("`<($ignore_tags)(?:\s|>)`i", $chunks[$i], $matches)) {
+          $open_tag = $matches[1];
+        }
+      }
+      // Otherwise, check whether this is the closing tag for $open_tag.
+      else {
+        if (preg_match("`<\/$open_tag>`i", $chunks[$i], $matches)) {
+          $open_tag = '';
+        }
+      }
+      // Tag chunk is done, so next chunk must be text.
+      $chunk_type = 'text';
+    }
+  }
+
+  return implode($chunks);
+}
+
+/**
+ * Generates the the webtools snippet for a single tweet.
+ *
+ * @param $url
+ *   Url of the tweet
+ * @param $id
+ *   ID of the tweet
+ * @return array
+ *   Script tag and webtools parameters
+ */
+function _twitter_statuses($url, $id) {
+
+  // Defines the webtools parameters for embedding a single tweet.
+  $webtools_parameters = array(
+    "service" => "smk",
+    "type" => "single",
+    "display_user" => variable_get('muck_webtools_display_user') ? 'true' : 'false',
+    "display_user_pic" => variable_get('muck_webtools_display_user_pic') ? 'true' : 'false',
+    "auto_expand_photo" => variable_get('muck_webtools_auto_expand_photo')  ? 'true' : 'false',
+    "id" => $id,
+  );
+
+  // Generates the webtools snippet.
+  $html = '<script type="application/json">' . drupal_json_encode($webtools_parameters) . '</script>';
+  return $html;
+}
+
+/**
+ * Implements template_preprocess_page().
+ *
+ * @todo find more intelligent way to include the webtools smartloader.
+ */
+function muck_preprocess_page(&$variables) {
+  $url = variable_get('muck_webtools_smartloader_url', '//europa.eu/webtools/load.js');
+
+  // Includes the Webtools smartloader in the page.
+  drupal_add_js($url, array(
+    'type' => 'external',
+    'defer' => TRUE,
+    'scope' => 'footer',
+  ));
+}
+
+/**
+ * Implements hook_menu().
+ */
+function muck_menu() {
+  $items = array();
+  $items['admin/config/system/muck'] = array(
+    'title' => 'Webtools',
+    'description' => 'Configuration for Webtools',
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer site configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+    'weight' => '0',
+  );
+  $items['admin/config/system/muck/twitter'] = array(
+    'title' => 'Webtools Twitter settings',
+    'description' => 'Settings for using Twitter via Webtools',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('_muck_twitter_settings_form'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'muck.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Generates the the webtools snippet for a user twitter timeline.
+ *
+ * @todo verify with wt team if tweet_more_btn works
+ *
+ * @param $url
+ *   Url of the tweet
+ * @param $user
+ *   Twitter user ID
+ * @return array
+ *   Script tag and webtools parameters
+ */
+function _twitter_user_timeline($url, $user) {
+
+  // Defines the webtools parameters for embedding a single tweet.
+  $webtools_parameters = array(
+    "service" => "smk",
+    "type" => "user",
+    "display_user" => variable_get('muck_webtools_display_user') ? 'true' : 'false',
+    "display_user_pic" => variable_get('muck_webtools_display_user_pic') ? 'true' : 'false',
+    "auto_expand_photo" => variable_get('muck_webtools_auto_expand_photo')  ? 'true' : 'false',
+    "screen_name" => $user,
+	"count"=> variable_get('muck_webtools_count', 3),
+	"include_rts"=> variable_get('muck_webtools_include_rts')  ? 'true' : 'false',
+	"rts_display_original"=> variable_get('muck_webtools_rts_display_original')  ? 'true' : 'false',
+	"exclude_replies"=> variable_get('muck_webtools_show_replies')  ? 'false' : 'true',
+	"tweet_more_btn"=> variable_get('muck_webtools_tweet_more_btn')  ? 'true' : 'false',
+  );
+
+  // Generates the webtools snippet.
+  $html = '<script type="application/json">' . drupal_json_encode($webtools_parameters) . '</script>';
+  return $html;
+}
